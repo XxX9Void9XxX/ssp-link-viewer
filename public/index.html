@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Link Viewer</title>
+<style>
+body { margin:0; font-family:monospace; background:#000; color:#0f0; text-align:center;}
+#topBar { position:fixed; top:0; left:0; width:100%; background:#111; padding:10px 0; z-index:1000; box-shadow:0 0 20px #0f0;}
+#topBar h1 { margin:0; color:#0f0; text-shadow:0 0 10px #0f0,0 0 20px #0a0;}
+#mainContent { margin-top:90px; padding:20px;}
+input,button { font-family:monospace;}
+input#seed,input#filter { background:#111;color:#0f0;border:1px solid #0f0;padding:6px;margin:5px;}
+button { cursor:pointer; }
+button#start { background:transparent;color:#0f0;border:2px solid #0f0;padding:8px 20px;margin:5px; }
+button#start:hover { background:#0f0;color:#000;}
+pre#log { text-align:left; max-width:90%; margin:20px auto; background:#000; padding:15px; border:1px solid #0f0; height:200px; overflow-y:auto; border-radius:4px; }
+ul#linkList { list-style:none; padding:0; margin:20px auto; max-width:90%; text-align:left; color:#0f0; background:#111; border:1px solid #0f0; border-radius:4px; max-height:400px; overflow-y:auto; }
+ul#linkList li { margin:5px 0; }
+ul#linkList li a { color:#0f0; text-decoration:none; }
+ul#linkList li button { margin-left:8px; background:transparent;color:#0f0;border:1px solid #0f0;padding:2px 6px; }
+.controls { display:flex; gap:8px; justify-content:center; align-items:center; flex-wrap:wrap; margin:8px 0 12px 0; }
+.modeBtn { background:rgba(0,0,0,0.3); color:#0f0; border:1px solid #0f0; padding:6px 10px; border-radius:6px; cursor:pointer; }
+.modeBtn.active { background:#0f0; color:#001; font-weight:700; }
+.viewer { max-width:90%; margin:10px auto; text-align:left; display:none; }
+textarea#rawText { width:100%; min-height:220px; background:#000; color:#0f0; border:1px solid #0f0; padding:8px; border-radius:6px; resize:vertical; }
+</style>
+</head>
+<body>
+<div id="topBar"><h1>Link Viewer</h1></div>
+
+<div id="mainContent">
+  <input id="seed" type="text" placeholder="Enter URL (https://...)" size="60">
+  <div class="controls">
+    <button id="selectCrawl" class="modeBtn active">Crawl</button>
+    <button id="selectView" class="modeBtn">View HTML</button>
+    <button id="start">Start</button>
+    <input id="filter" type="text" placeholder="Search links" size="30">
+  </div>
+
+  <pre id="log"></pre>
+  <ul id="linkList"></ul>
+
+  <div id="htmlViewer" class="viewer">
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button id="previewTab" class="modeBtn">Preview in about:blank</button>
+      <button id="copyBtn" class="modeBtn">Copy</button>
+      <button id="downloadBtn" class="modeBtn">Download</button>
+    </div>
+    <textarea id="rawText" placeholder="Raw HTML will appear here"></textarea>
+  </div>
+</div>
+
+<script>
+const PROXY = "/api/proxy?url=";
+
+const seedInput=document.getElementById('seed');
+const startBtn=document.getElementById('start');
+const logEl=document.getElementById('log');
+const linkListEl=document.getElementById('linkList');
+const filterInput=document.getElementById('filter');
+
+const selectCrawl=document.getElementById('selectCrawl');
+const selectView=document.getElementById('selectView');
+
+const htmlViewer=document.getElementById('htmlViewer');
+const rawText=document.getElementById('rawText');
+
+const previewTab=document.getElementById('previewTab');
+const copyBtn=document.getElementById('copyBtn');
+const downloadBtn=document.getElementById('downloadBtn');
+
+let allLinks=[];
+
+function log(msg){ logEl.textContent+=msg+"\n"; logEl.scrollTop=logEl.scrollHeight; }
+function normalizeUrl(raw){ try{const u=new URL(raw); u.hash=""; return u.href;}catch{return null;} }
+function isSameDomain(url,base){ try{return new URL(url).hostname===base}catch{return false;} }
+
+async function fetchHtml(url){
+  try{
+    const resp = await fetch(PROXY + encodeURIComponent(url));
+    if(!resp.ok){ log(`Fetch failed: ${url} → ${resp.status}`); return null; }
+    return await resp.text();
+  }catch(e){ log(`Fetch error: ${url} → ${e.message}`); return null; }
+}
+
+function extractLinks(html,base){
+  const doc=new DOMParser().parseFromString(html,"text/html");
+  const links=new Set();
+  doc.querySelectorAll("a[href]").forEach(a=>{
+    try{
+      const u=new URL(a.getAttribute("href"),base).href;
+      const n=normalizeUrl(u);
+      if(n) links.add(n);
+    }catch{}
+  });
+  return Array.from(links);
+}
+
+async function crawl(seed){
+  const baseHost=new URL(seed).hostname;
+  const visited=new Set();
+  const queue=[seed];
+  allLinks=[]; linkListEl.innerHTML="";
+  while(queue.length>0){
+    const raw=queue.shift(); const url=normalizeUrl(raw);
+    if(!url) continue;
+    if(visited.has(url)){ log(`Skipping: ${url}`); continue; }
+    visited.add(url); log(`Crawling: ${url}`);
+    const html=await fetchHtml(url); if(!html) continue;
+    const links=extractLinks(html,url);
+    for(const l of links){
+      if(isSameDomain(l,baseHost)&&!visited.has(l)) queue.push(l);
+      if(!allLinks.includes(l)) allLinks.push(l);
+    }
+    await new Promise(r=>setTimeout(r,200));
+  }
+  log(`\nCrawl done. Found ${allLinks.length} links.`);
+  renderLinkList(allLinks);
+}
+
+function renderLinkList(list){
+  list.sort((a,b)=>a.localeCompare(b));
+  linkListEl.innerHTML="";
+  for(const url of list){
+    const li=document.createElement('li');
+    const a=document.createElement('a'); a.href=url; a.textContent=url; a.target="_blank"; li.appendChild(a);
+    const viewBtn=document.createElement('button'); viewBtn.textContent='View HTML';
+    viewBtn.onclick=()=>{ activateMode('view'); seedInput.value=url; startFetchHtml(url); };
+    li.appendChild(viewBtn);
+    linkListEl.appendChild(li);
+  }
+}
+
+filterInput.addEventListener("input",()=>{ const q=filterInput.value.toLowerCase(); renderLinkList(allLinks.filter(u=>u.toLowerCase().includes(q))); });
+
+function activateMode(mode){
+  if(mode==='crawl'){ selectCrawl.classList.add('active'); selectView.classList.remove('active'); htmlViewer.style.display='none'; }
+  else{ selectView.classList.add('active'); selectCrawl.classList.remove('active'); htmlViewer.style.display='block'; }
+}
+
+selectCrawl.onclick=()=>activateMode('crawl');
+selectView.onclick=()=>activateMode('view');
+
+startBtn.onclick=()=>{
+  const seed=seedInput.value.trim();
+  if(!seed){alert('Enter URL first'); return;}
+  const full=seed.startsWith('http')?seed:'https://'+seed;
+  if(selectCrawl.classList.contains('active')){ logEl.textContent=''; crawl(full); }
+  else{ startFetchHtml(full); }
+};
+
+async function startFetchHtml(url){
+  activateMode('view'); htmlViewer.scrollIntoView({behavior:'smooth'});
+  rawText.value='Fetching via proxy: '+url+' ...';
+  const html=await fetchHtml(url);
+  rawText.value=html||'<!-- Error fetching HTML -->';
+}
+
+previewTab.onclick=()=>{
+  const html=rawText.value||'';
+  const win=window.open('about:blank','_blank');
+  if(!win){alert('Popup blocked'); return;}
+  win.document.open(); win.document.write(html); win.document.close(); win.focus();
+};
+
+copyBtn.onclick=async()=>{
+  try{ await navigator.clipboard.writeText(rawText.value||''); copyBtn.textContent='Copied!'; setTimeout(()=>copyBtn.textContent='Copy',1200);}catch(e){alert('Copy failed:'+e);}
+};
+
+downloadBtn.onclick=()=>{
+  const blob=new Blob([rawText.value||''],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='page.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+};
+
+seedInput.addEventListener('keydown',(e)=>{if(e.key==='Enter') startBtn.click();});
+</script>
+</body>
+</html>
