@@ -4,166 +4,132 @@
 <meta charset="UTF-8">
 <title>Google</title>
 <style>
-body{margin:0;font-family:monospace;background:#000;color:#0f0;text-align:center;}
-#topBar{position:fixed;top:0;left:0;width:100%;background:#111;padding:10px;z-index:1000;}
-#main{margin-top:160px;padding:20px;}
-input,button{font-family:monospace;background:#111;color:#0f0;border:1px solid #0f0;padding:5px;margin:5px;}
-button:hover{background:#0f0;color:#000;cursor:pointer;}
+body { margin:0; font-family:monospace; background:#000; color:#0f0; text-align:center;}
+#topBar { position:fixed; top:0; left:0; width:100%; background:#111; padding:10px 0; z-index:1000; box-shadow:0 0 20px #0f0;}
+#topBar h1 { margin:0; color:#0f0; text-shadow:0 0 10px #0f0,0 0 20px #0a0;}
+#mainContent { margin-top:90px; padding:20px;}
+input, button { font-family:monospace;}
+input#seed,input#filter { background:#111;color:#0f0;border:1px solid #0f0;padding:6px;margin:5px;}
+button { cursor:pointer; }
+button#start { background:transparent;color:#0f0;border:2px solid #0f0;padding:8px 20px;margin:5px; }
+button#start:hover { background:#0f0;color:#000;}
+pre#log { text-align:left; max-width:90%; margin:20px auto; background:#000; padding:15px; border:1px solid #0f0; height:200px; overflow-y:auto; border-radius:4px; }
+ul#linkList { list-style:none; padding:0; margin:20px auto; max-width:90%; text-align:left; color:#0f0; background:#111; border:1px solid #0f0; border-radius:4px; max-height:400px; overflow-y:auto; }
+ul#linkList li { margin:5px 0; }
+ul#linkList li a { color:#0f0; text-decoration:none; }
+ul#linkList li button { margin-left:8px; background:transparent;color:#0f0;border:1px solid #0f0;padding:2px 6px; }
+.controls { display:flex; gap:8px; justify-content:center; align-items:center; flex-wrap:wrap; margin:8px 0 12px 0; }
+.modeBtn { background:rgba(0,0,0,0.3); color:#0f0; border:1px solid #0f0; padding:6px 10px; border-radius:6px; cursor:pointer; }
+.modeBtn.active { background:#0f0; color:#001; font-weight:700; }
+.viewer { max-width:90%; margin:10px auto; text-align:left; display:none; }
+textarea#rawText { width:100%; min-height:220px; background:#000; color:#0f0; border:1px solid #0f0; padding:8px; border-radius:6px; resize:vertical; }
+.small { font-size:13px; color:#6f6; margin-top:6px; }
 #progressContainer{width:90%;margin:10px auto;background:#111;border:1px solid #0f0;height:20px;position:relative;}
 #progressBar{width:0%;height:100%;background:#0f0;}
 #progressText{position:absolute;width:100%;top:0;left:0;font-size:12px;line-height:20px;}
-#log{max-width:90%;height:100px;overflow:auto;border:1px solid #0f0;margin:10px auto;text-align:left;padding:5px;}
-ul{list-style:none;padding:0;margin:10px auto;max-width:90%;text-align:left;border:1px solid #0f0;background:#111;max-height:200px;overflow:auto;}
-.node{cursor:pointer;display:block;}
-.success{color:#0f0;}
-.failed{color:#f00;}
 .retryBtn{color:#f00;border:1px solid #f00;padding:2px 4px;margin-left:5px;font-size:11px;cursor:pointer;}
-textarea{width:90%;height:150px;background:#000;color:#0f0;border:1px solid #0f0;padding:5px;margin-top:5px;resize:vertical;}
-#htmlControls{margin-top:5px;display:flex;gap:5px;justify-content:center;}
 </style>
 </head>
 <body>
-
 <div id="topBar"><h1>Link Viewer</h1></div>
-<div id="main">
-<input id="urlInput" placeholder="https://example.com" size="50">
+<div id="mainContent">
+<input id="seed" type="text" placeholder="Enter URL (https://...)" size="60">
 <label><input type="checkbox" id="sameDomain" checked> Only this site</label>
-<br>
-<button id="startBtn">Start Crawl</button>
-<button id="stopBtn">Stop</button>
-<br>
-<input id="search" placeholder="Search links">
+<div class="controls">
+  <button id="selectCrawl" class="modeBtn active">Crawl</button>
+  <button id="selectView" class="modeBtn">View HTML</button>
+  <button id="start">Start</button>
+  <input id="filter" type="text" placeholder="Search links" size="30">
+</div>
 <div id="progressContainer"><div id="progressBar"></div><div id="progressText">0%</div></div>
 <pre id="log"></pre>
-<ul id="tree"></ul>
-
-<div id="htmlViewer">
-<div id="htmlControls">
-<button id="previewBtn">Preview in new tab</button>
-<button id="copyBtn">Copy</button>
-<button id="downloadBtn">Download</button>
+<ul id="linkList"></ul>
+<div id="htmlViewer" class="viewer">
+  <div id="htmlControls">
+    <button id="previewTab" class="modeBtn">Preview</button>
+    <button id="copyBtn" class="modeBtn">Copy</button>
+    <button id="downloadBtn" class="modeBtn">Download</button>
+  </div>
+  <textarea id="rawText" placeholder="Raw HTML will appear here"></textarea>
 </div>
-<textarea id="rawHTML" placeholder="Raw HTML will appear here"></textarea>
-</div>
-
 <script>
 const PROXY="/api/proxy?url=";
-const urlInput=document.getElementById("urlInput");
-const startBtn=document.getElementById("startBtn");
-const stopBtn=document.getElementById("stopBtn");
-const sameDomainChk=document.getElementById("sameDomain");
-const logBox=document.getElementById("log");
-const tree=document.getElementById("tree");
-const search=document.getElementById("search");
-const rawHTML=document.getElementById("rawHTML");
-const previewBtn=document.getElementById("previewBtn");
-const copyBtn=document.getElementById("copyBtn");
-const downloadBtn=document.getElementById("downloadBtn");
-const progressBar=document.getElementById("progressBar");
-const progressText=document.getElementById("progressText");
+const seedInput=document.getElementById('seed');
+const startBtn=document.getElementById('start');
+const logEl=document.getElementById('log');
+const linkListEl=document.getElementById('linkList');
+const filterInput=document.getElementById('filter');
+const selectCrawl=document.getElementById('selectCrawl');
+const selectView=document.getElementById('selectView');
+const htmlViewer=document.getElementById('htmlViewer');
+const rawText=document.getElementById('rawText');
+const previewTab=document.getElementById('previewTab');
+const copyBtn=document.getElementById('copyBtn');
+const downloadBtn=document.getElementById('downloadBtn');
+const sameDomainChk=document.getElementById('sameDomain');
+const progressBar=document.getElementById('progressBar');
+const progressText=document.getElementById('progressText');
 
-let visited=new Set(),queue=[],allLinks=[],running=false,sitemap={};
+let allLinks=[],visited=new Set(),queue=[],running=false;
 
-// Logging
-function log(msg){logBox.textContent+=msg+"\n";logBox.scrollTop=logBox.scrollHeight;}
-
-// Normalize URLs
-function normalize(u){try{let url=new URL(u);url.hash="";return url.href}catch{return null}}
-
-// Fetch page via proxy
-async function fetchPage(url){
-  try{
-    const res=await fetch(PROXY+encodeURIComponent(url));
-    if(!res.ok) return {ok:false,error:res.status};
-    const html=await res.text();
-    return {ok:true,html};
-  }catch(e){return {ok:false,error:e.message};}
-}
-
-// Extract links + iframe sources
+function log(msg){ logEl.textContent+=msg+"\n"; logEl.scrollTop=logEl.scrollHeight; }
+function normalizeUrl(raw){ try{const u=new URL(raw); u.hash=""; return u.href;}catch{return null;} }
+async function fetchHtml(url){ try{ const resp=await fetch(PROXY + encodeURIComponent(url)); if(!resp.ok) return {ok:false,error:resp.status}; const html=await resp.text(); return {ok:true,html}; }catch(e){return {ok:false,error:e.message};} }
 function extractLinks(html,base){
   const doc=new DOMParser().parseFromString(html,"text/html");
-  let out=[];
-  doc.querySelectorAll("a[href]").forEach(a=>{try{out.push(new URL(a.getAttribute("href"),base).href)}catch{}});
-  doc.querySelectorAll("iframe[src]").forEach(f=>{try{out.push(new URL(f.getAttribute("src"),base).href)}catch{}});
-  return Array.from(new Set(out));
-}
-
-// Render tree node
-function renderNode(url,status,parent){
-  const li=document.createElement("li");
-  const span=document.createElement("span");
-  span.textContent="▶ "+url;
-  span.className="node "+status;
-  const childUL=document.createElement("ul");
-  childUL.style.display="none";
-  span.onclick=()=>{childUL.style.display=childUL.style.display==="none"?"block":"none";};
-  li.appendChild(span); li.appendChild(childUL);
-  parent.appendChild(li);
-  return {childUL,span};
-}
-
-// Crawl function
-async function crawl(root){
-  if(!root.startsWith("http")) root="https://"+root;
-  const rootHost=new URL(root).hostname;
-  visited.clear(); queue=[root]; allLinks=[]; sitemap={}; tree.innerHTML=""; running=true;
-  log("Starting crawl "+root);
-  let done=0;
-  const maxConcurrent=3;
-  
-  while(queue.length>0 && running){
-    const batch=queue.splice(0,maxConcurrent);
-    await Promise.all(batch.map(async(url)=>{
-      const n=normalize(url);
-      if(!n || visited.has(n)) return;
-      visited.add(n);
-      log("Crawling "+n);
-      const nodeRef=renderNode(n,"pending",tree);
-      const r=await fetchPage(n);
-      if(r.ok){
-        nodeRef.span.className="node success";
-        const links=extractLinks(r.html,n);
-        links.forEach(l=>{
-          if(!visited.has(l) && (!sameDomainChk.checked || new URL(l).hostname===rootHost)){
-            queue.push(l);
-          }
-          if(!allLinks.includes(l)) allLinks.push(l);
-        });
-      } else {
-        nodeRef.span.className="node failed";
-        const retry=document.createElement("span");
-        retry.textContent=" Retry"; retry.className="retryBtn";
-        retry.onclick=()=>{queue.push(n); crawl(root);};
-        nodeRef.childUL.appendChild(retry);
-        log("Error "+r.error);
-      }
-      done++;
-      const pct=Math.min(100,Math.floor(done/(done+queue.length)*100));
-      progressBar.style.width=pct+"%";
-      progressText.textContent=pct+"% ("+done+"/"+(done+queue.length)+")";
-    }));
-    await new Promise(r=>setTimeout(r,50));
-  }
-  progressBar.style.width="100%"; progressText.textContent="100% ("+allLinks.length+"/"+allLinks.length+")";
-  log("Crawl finished, "+allLinks.length+" links found.");
-}
-
-// HTML Viewer buttons
-previewBtn.onclick=()=>{let w=window.open('about:blank'); w.document.open(); w.document.write(rawHTML.value||''); w.document.close(); w.focus();}
-copyBtn.onclick=()=>{navigator.clipboard.writeText(rawHTML.value||'');}
-downloadBtn.onclick=()=>{let blob=new Blob([rawHTML.value||''],{type:'text/html'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='page.html';a.click();}
-
-// Start / Stop
-startBtn.onclick=()=>{crawl(urlInput.value);}
-stopBtn.onclick=()=>{running=false; log("Stopped");}
-
-// Search filter
-search.oninput=()=>{const q=search.value.toLowerCase();
-  tree.querySelectorAll("span.node").forEach(s=>{
-    s.parentElement.style.display = s.textContent.toLowerCase().includes(q) ? "block" : "none";
+  const links=new Set();
+  doc.querySelectorAll("a[href],iframe[src]").forEach(a=>{
+    try{const u=new URL(a.getAttribute("href")||a.getAttribute("src"),base).href; const n=normalizeUrl(u); if(n) links.add(n);}catch{}
   });
-};
+  return Array.from(links);
+}
+function renderLinkList(list){
+  linkListEl.innerHTML="";
+  list.forEach(url=>{
+    const li=document.createElement('li');
+    const a=document.createElement('a'); a.href=url; a.textContent=url; a.target="_blank";
+    const viewBtn=document.createElement('button'); viewBtn.textContent='View HTML';
+    viewBtn.onclick=async()=>{ activateMode('view'); seedInput.value=url; rawText.value="Fetching..."; const r=await fetchHtml(url); rawText.value=r.ok?r.html:"<!-- Error fetching -->"; };
+    li.appendChild(a); li.appendChild(viewBtn);
+    linkListEl.appendChild(li);
+  });
+}
+
+filterInput.addEventListener("input",()=>{ const q=filterInput.value.toLowerCase(); renderLinkList(allLinks.filter(u=>u.toLowerCase().includes(q))); });
+function activateMode(mode){ if(mode==='crawl'){ selectCrawl.classList.add('active'); selectView.classList.remove('active'); htmlViewer.style.display='none'; linkListEl.style.display=''; } else{ selectView.classList.add('active'); selectCrawl.classList.remove('active'); htmlViewer.style.display='block'; linkListEl.style.display=''; } }
+selectCrawl.onclick=()=>activateMode('crawl');
+selectView.onclick=()=>activateMode('view');
+
+async function crawl(seed){
+  if(!seed.startsWith('http')) seed='https://'+seed;
+  visited.clear(); queue=[seed]; allLinks=[]; linkListEl.innerHTML=''; running=true; logEl.textContent='';
+  const baseHost=new URL(seed).hostname;
+  let done=0;
+  while(queue.length>0 && running){
+    const url=queue.shift(); const n=normalizeUrl(url); if(!n || visited.has(n)) continue;
+    visited.add(n); log(`Crawling: ${n}`);
+    const r=await fetchHtml(n);
+    if(r.ok){
+      const links=extractLinks(r.html,n);
+      for(const l of links){
+        if(!visited.has(l) && (!sameDomainChk.checked || new URL(l).hostname===baseHost)) queue.push(l);
+        if(!allLinks.includes(l)) allLinks.push(l);
+      }
+    } else{ log(`Error fetching ${n} → ${r.error}`); }
+    done++; progressBar.style.width=Math.min(100,Math.floor(done/(done+queue.length)*100))+"%";
+    progressText.textContent=Math.min(100,Math.floor(done/(done+queue.length)*100))+"% ("+done+"/"+(done+queue.length)+")";
+    renderLinkList(allLinks); await new Promise(r=>setTimeout(r,50));
+  }
+  progressBar.style.width="100%"; progressText.textContent=`100% (${allLinks.length}/${allLinks.length})`;
+  log(`Crawl done. Found ${allLinks.length} links.`);
+}
+
+startBtn.onclick=()=>{ const seed=seedInput.value.trim(); if(!seed){alert('Enter URL first'); return;} if(selectCrawl.classList.contains('active')) crawl(seed); else fetchHtml(seed).then(r=>rawText.value=r.ok?r.html:"<!-- Error fetching -->"); };
+
+previewTab.onclick=()=>{ const win=window.open('about:blank','_blank'); win.document.open(); win.document.write(rawText.value||''); win.document.close(); win.focus(); };
+copyBtn.onclick=()=>{ navigator.clipboard.writeText(rawText.value||''); };
+downloadBtn.onclick=()=>{ const blob=new Blob([rawText.value||''],{type:'text/html'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='page.html'; a.click(); };
+seedInput.addEventListener('keydown',(e)=>{if(e.key==='Enter') startBtn.click();});
 </script>
 </body>
 </html>
