@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SSP Link Portal - Enhanced</title>
+<title>Google</title>
 <style>
 body { margin:0; font-family:monospace; background:#000; color:#0f0; text-align:center; }
 #topBar { position:fixed; top:0; left:0; width:100%; background:#111; padding:10px 0; z-index:1000; box-shadow:0 0 20px #0f0; }
@@ -13,10 +13,10 @@ input#seed,input#filter { background:#111;color:#0f0;border:1px solid #0f0;paddi
 button { cursor:pointer; }
 button#start { background:transparent;color:#0f0;border:2px solid #0f0;padding:8px 20px;margin:5px; }
 button#start:hover { background:#0f0;color:#000; }
-pre#log { text-align:left; max-width:90%; margin:20px auto; background:#000; padding:15px; border:1px solid #0f0; height:200px; overflow-y:auto; border-radius:4px; }
-ul#linkList { list-style:none; padding:0; margin:20px auto; max-width:90%; text-align:left; color:#0f0; background:#111; border:1px solid #0f0; border-radius:4px; max-height:400px; overflow-y:auto; }
-ul#linkList li { margin:5px 0; }
-ul#linkList li a { color:#0f0; text-decoration:none; }
+pre#log { text-align:left; max-width:90%; margin:20px auto; background:#000; padding:15px; border:1px solid #0f0; height:150px; overflow-y:auto; border-radius:4px; }
+ul#linkList, ul#crawlTree { list-style:none; padding:0; margin:20px auto; max-width:90%; text-align:left; color:#0f0; background:#111; border:1px solid #0f0; border-radius:4px; max-height:300px; overflow-y:auto; }
+ul#linkList li, ul#crawlTree li { margin:5px 0; }
+ul#linkList li a, ul#crawlTree li a { color:#0f0; text-decoration:none; }
 ul#linkList li button { margin-left:8px; background:transparent;color:#0f0;border:1px solid #0f0;padding:2px 6px; }
 .controls { display:flex; gap:8px; justify-content:center; align-items:center; flex-wrap:wrap; margin:8px 0 12px 0; }
 .modeBtn { background:rgba(0,0,0,0.3); color:#0f0; border:1px solid #0f0; padding:6px 10px; border-radius:6px; cursor:pointer; }
@@ -29,7 +29,7 @@ textarea#rawText { width:100%; min-height:220px; background:#000; color:#0f0; bo
 </head>
 <body>
 
-<div id="topBar"><h1>SSP Link Portal</h1></div>
+<div id="topBar"><h1>Link Viewer</h1></div>
 
 <div id="mainContent">
 
@@ -45,6 +45,7 @@ textarea#rawText { width:100%; min-height:220px; background:#000; color:#0f0; bo
 <div id="progressContainer"><div id="progressBar"></div></div>
 
 <pre id="log"></pre>
+<ul id="crawlTree"></ul>
 <ul id="linkList"></ul>
 
 <div id="htmlViewer" class="viewer">
@@ -65,6 +66,7 @@ const seedInput = document.getElementById('seed');
 const startBtn = document.getElementById('start');
 const logEl = document.getElementById('log');
 const linkListEl = document.getElementById('linkList');
+const crawlTreeEl = document.getElementById('crawlTree');
 const filterInput = document.getElementById('filter');
 const selectCrawl = document.getElementById('selectCrawl');
 const selectView = document.getElementById('selectView');
@@ -76,6 +78,7 @@ const downloadBtn = document.getElementById('downloadBtn');
 const progressBar = document.getElementById('progressBar');
 
 let allLinks = [];
+let treeData = {};
 
 function log(msg){ logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; }
 function normalizeUrl(raw){ try{ const u = new URL(raw); u.hash=""; return u.href;}catch{return null;} }
@@ -93,12 +96,10 @@ function extractLinks(html, base){
   const doc = new DOMParser().parseFromString(html,"text/html");
   const links = new Set();
 
-  // normal links
   doc.querySelectorAll("a[href]").forEach(a=>{
     try{ const u = new URL(a.getAttribute("href"), base).href; const n = normalizeUrl(u); if(n) links.add(n); }catch{}
   });
 
-  // links in iframes
   doc.querySelectorAll("iframe[src]").forEach(f=>{
     try{ const u = new URL(f.getAttribute("src"), base).href; const n = normalizeUrl(u); if(n) links.add(n); }catch{}
   });
@@ -106,32 +107,55 @@ function extractLinks(html, base){
   return Array.from(links);
 }
 
+// render crawl tree recursively
+function renderTree(node, parentEl){
+  const li = document.createElement('li');
+  li.textContent = node.url;
+  parentEl.appendChild(li);
+  if(node.children && node.children.length>0){
+    const ul = document.createElement('ul');
+    li.appendChild(ul);
+    node.children.forEach(c=>renderTree(c, ul));
+  }
+}
+
 async function crawl(seed){
   const baseHost = new URL(seed).hostname;
   const visited = new Set();
-  const queue = [seed];
-  allLinks=[]; linkListEl.innerHTML=""; progressBar.style.width="0%";
+  const queue = [{url: seed, parent: null}];
+  allLinks=[]; treeData = {url: seed, children: []};
+  crawlTreeEl.innerHTML=""; linkListEl.innerHTML=""; progressBar.style.width="0%";
 
-  let total = 1; // estimated total pages (will grow dynamically)
+  const nodeMap = {}; nodeMap[seed] = treeData;
+
+  let total = 1; 
   let done = 0;
 
   while(queue.length>0){
-    const raw = queue.shift();
-    const url = normalizeUrl(raw);
-    if(!url) continue;
-    if(visited.has(url)){ log(`Skipping: ${url}`); continue; }
-    visited.add(url);
-    log(`Crawling: ${url}`);
-    const html = await fetchHtml(url); if(!html) continue;
-    const links = extractLinks(html,url);
+    const {url, parent} = queue.shift();
+    const normUrl = normalizeUrl(url);
+    if(!normUrl || visited.has(normUrl)){ log(`Skipping: ${url}`); continue; }
+    visited.add(normUrl);
 
-    for(const l of links){
-      if(isSameDomain(l, baseHost) && !visited.has(l)) queue.push(l);
+    log(`Crawling: ${normUrl}`);
+    const html = await fetchHtml(normUrl); if(!html) continue;
+
+    const links = extractLinks(html, normUrl);
+    links.forEach(l=>{
+      if(isSameDomain(l, baseHost) && !visited.has(l)) queue.push({url:l, parent:normUrl});
       if(!allLinks.includes(l)) allLinks.push(l);
+    });
+
+    // build tree
+    if(parent){
+      if(!nodeMap[parent].children) nodeMap[parent].children = [];
+      const node = {url:normUrl, children:[]};
+      nodeMap[parent].children.push(node);
+      nodeMap[normUrl] = node;
     }
 
     done++;
-    total = Math.max(total, queue.length + done);
+    total = Math.max(total, queue.length+done);
     progressBar.style.width = Math.floor((done/total)*100) + "%";
 
     await new Promise(r=>setTimeout(r,200));
@@ -139,6 +163,7 @@ async function crawl(seed){
 
   log(`\nCrawl done. Found ${allLinks.length} links.`);
   renderLinkList(allLinks);
+  renderTree(treeData, crawlTreeEl);
 }
 
 function renderLinkList(list){
