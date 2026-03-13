@@ -74,9 +74,7 @@ let allLinks = [];
 
 function log(msg) { logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; }
 function normalizeUrl(raw) { try { const u = new URL(raw); u.hash=""; return u.href; } catch { return null; } }
-function isSameDomain(url, base) { try { return new URL(url).hostname === base } catch { return false; }
-
-}
+function isSameDomain(url, base) { try { return new URL(url).hostname === base } catch { return false; } }
 
 async function fetchHtml(url){
   try{
@@ -185,7 +183,6 @@ downloadBtn.onclick = ()=>{
 }
 
 seedInput.addEventListener('keydown',(e)=>{ if(e.key==='Enter') startBtn.click(); });
-
 </script>
 </body>
 </html>
