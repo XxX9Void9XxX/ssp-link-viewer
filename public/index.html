@@ -3,231 +3,459 @@
 <head>
 <meta charset="UTF-8">
 <title>Google</title>
+
 <style>
-body { margin:0; font-family:monospace; background:#000; color:#0f0; text-align:center; }
-#topBar { position:fixed; top:0; left:0; width:100%; background:#111; padding:10px 0; z-index:1000; box-shadow:0 0 20px #0f0; }
-#topBar h1 { margin:0; color:#0f0; text-shadow:0 0 10px #0f0,0 0 20px #0a0; }
-#mainContent { margin-top:90px; padding:20px; }
-input,button { font-family:monospace; }
-input#seed,input#filter { background:#111;color:#0f0;border:1px solid #0f0;padding:6px;margin:5px; }
-button { cursor:pointer; }
-button#start { background:transparent;color:#0f0;border:2px solid #0f0;padding:8px 20px;margin:5px; }
-button#start:hover { background:#0f0;color:#000; }
-pre#log { text-align:left; max-width:90%; margin:20px auto; background:#000; padding:15px; border:1px solid #0f0; height:150px; overflow-y:auto; border-radius:4px; }
-ul#linkList, ul#crawlTree { list-style:none; padding:0; margin:20px auto; max-width:90%; text-align:left; color:#0f0; background:#111; border:1px solid #0f0; border-radius:4px; max-height:300px; overflow-y:auto; }
-ul#linkList li, ul#crawlTree li { margin:5px 0; }
-ul#linkList li a, ul#crawlTree li a { color:#0f0; text-decoration:none; }
-ul#linkList li button { margin-left:8px; background:transparent;color:#0f0;border:1px solid #0f0;padding:2px 6px; }
-.controls { display:flex; gap:8px; justify-content:center; align-items:center; flex-wrap:wrap; margin:8px 0 12px 0; }
-.modeBtn { background:rgba(0,0,0,0.3); color:#0f0; border:1px solid #0f0; padding:6px 10px; border-radius:6px; cursor:pointer; }
-.modeBtn.active { background:#0f0; color:#001; font-weight:700; }
-.viewer { max-width:90%; margin:10px auto; text-align:left; display:none; }
-textarea#rawText { width:100%; min-height:220px; background:#000; color:#0f0; border:1px solid #0f0; padding:8px; border-radius:6px; resize:vertical; }
-#progressContainer { width:90%; margin:10px auto; background:#111; border:1px solid #0f0; border-radius:4px; height:20px; }
-#progressBar { width:0%; height:100%; background:#0f0; border-radius:4px; }
+
+body{
+margin:0;
+font-family:monospace;
+background:#000;
+color:#0f0;
+text-align:center;
+}
+
+#topBar{
+position:fixed;
+top:0;
+left:0;
+width:100%;
+background:#111;
+padding:10px;
+box-shadow:0 0 20px #0f0;
+z-index:1000;
+}
+
+#topBar h1{
+margin:0;
+color:#0f0;
+}
+
+#main{
+margin-top:90px;
+padding:20px;
+}
+
+input,button{
+font-family:monospace;
+}
+
+input{
+background:#111;
+color:#0f0;
+border:1px solid #0f0;
+padding:6px;
+margin:5px;
+}
+
+button{
+background:black;
+color:#0f0;
+border:1px solid #0f0;
+padding:6px 12px;
+cursor:pointer;
+}
+
+button:hover{
+background:#0f0;
+color:#000;
+}
+
+#progressContainer{
+width:90%;
+margin:10px auto;
+background:#111;
+border:1px solid #0f0;
+height:20px;
+position:relative;
+}
+
+#progressBar{
+width:0%;
+height:100%;
+background:#0f0;
+}
+
+#progressText{
+position:absolute;
+width:100%;
+top:0;
+left:0;
+font-size:12px;
+line-height:20px;
+}
+
+#log{
+max-width:90%;
+height:150px;
+overflow:auto;
+border:1px solid #0f0;
+margin:10px auto;
+text-align:left;
+padding:8px;
+background:black;
+}
+
+ul{
+list-style:none;
+padding:0;
+margin:10px auto;
+max-width:90%;
+text-align:left;
+border:1px solid #0f0;
+background:#111;
+max-height:300px;
+overflow:auto;
+}
+
+.node{
+cursor:pointer;
+}
+
+.success{color:#0f0;}
+.failed{color:#f00;}
+.skipped{color:#ff0;}
+
+.retry{
+color:#f00;
+border:1px solid #f00;
+padding:2px 4px;
+margin-left:5px;
+font-size:11px;
+}
+
+iframe{
+width:90%;
+height:400px;
+border:1px solid #0f0;
+margin-top:10px;
+}
+
 </style>
 </head>
+
 <body>
 
-<div id="topBar"><h1>Link Viewer</h1></div>
-
-<div id="mainContent">
-
-<input id="seed" type="text" placeholder="Enter URL (https://...)" size="60">
-
-<div class="controls">
-  <button id="selectCrawl" class="modeBtn active">Crawl</button>
-  <button id="selectView" class="modeBtn">View HTML</button>
-  <button id="start">Start</button>
-  <input id="filter" type="text" placeholder="Search links" size="30">
+<div id="topBar">
+<h1>Link Viewer</h1>
 </div>
 
-<div id="progressContainer"><div id="progressBar"></div></div>
+<div id="main">
+
+<input id="urlInput" placeholder="https://example.com" size="50">
+
+<br>
+
+<button id="startBtn">Start Crawl</button>
+<button id="pauseBtn">Pause</button>
+<button id="resumeBtn">Resume</button>
+<button id="stopBtn">Stop</button>
+<button id="exportBtn">Export Links</button>
+
+<br>
+
+<input id="search" placeholder="Search links">
+
+<div id="progressContainer">
+<div id="progressBar"></div>
+<div id="progressText">0%</div>
+</div>
 
 <pre id="log"></pre>
-<ul id="crawlTree"></ul>
-<ul id="linkList"></ul>
 
-<div id="htmlViewer" class="viewer">
-  <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-    <button id="previewTab" class="modeBtn">Preview in about:blank</button>
-    <button id="copyBtn" class="modeBtn">Copy</button>
-    <button id="downloadBtn" class="modeBtn">Download</button>
-  </div>
-  <textarea id="rawText" placeholder="Raw HTML will appear here"></textarea>
-</div>
+<ul id="tree"></ul>
+
+<ul id="links"></ul>
+
+<iframe id="preview"></iframe>
 
 </div>
 
 <script>
-const PROXY = "/api/proxy?url=";
 
-const seedInput = document.getElementById('seed');
-const startBtn = document.getElementById('start');
-const logEl = document.getElementById('log');
-const linkListEl = document.getElementById('linkList');
-const crawlTreeEl = document.getElementById('crawlTree');
-const filterInput = document.getElementById('filter');
-const selectCrawl = document.getElementById('selectCrawl');
-const selectView = document.getElementById('selectView');
-const htmlViewer = document.getElementById('htmlViewer');
-const rawText = document.getElementById('rawText');
-const previewTab = document.getElementById('previewTab');
-const copyBtn = document.getElementById('copyBtn');
-const downloadBtn = document.getElementById('downloadBtn');
-const progressBar = document.getElementById('progressBar');
+const PROXY="/api/proxy?url=";
 
-let allLinks = [];
-let treeData = {};
+const urlInput=document.getElementById("urlInput");
+const startBtn=document.getElementById("startBtn");
+const pauseBtn=document.getElementById("pauseBtn");
+const resumeBtn=document.getElementById("resumeBtn");
+const stopBtn=document.getElementById("stopBtn");
+const exportBtn=document.getElementById("exportBtn");
 
-function log(msg){ logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; }
-function normalizeUrl(raw){ try{ const u = new URL(raw); u.hash=""; return u.href;}catch{return null;} }
-function isSameDomain(url,base){ try{ return new URL(url).hostname === base } catch{return false;} }
+const progressBar=document.getElementById("progressBar");
+const progressText=document.getElementById("progressText");
 
-async function fetchHtml(url){
-  try{
-    const resp = await fetch(PROXY + encodeURIComponent(url));
-    if(!resp.ok){ log(`Fetch failed: ${url} → ${resp.status}`); return null; }
-    return await resp.text();
-  }catch(e){ log(`Fetch error: ${url} → ${e.message}`); return null; }
+const logBox=document.getElementById("log");
+
+const tree=document.getElementById("tree");
+const linksList=document.getElementById("links");
+
+const preview=document.getElementById("preview");
+
+const search=document.getElementById("search");
+
+let visited=new Set();
+let queue=[];
+let running=false;
+let paused=false;
+
+let allLinks=[];
+
+function log(msg){
+logBox.textContent+="["+new Date().toLocaleTimeString()+"] "+msg+"\n";
+logBox.scrollTop=logBox.scrollHeight;
 }
 
-function extractLinks(html, base){
-  const doc = new DOMParser().parseFromString(html,"text/html");
-  const links = new Set();
-
-  doc.querySelectorAll("a[href]").forEach(a=>{
-    try{ const u = new URL(a.getAttribute("href"), base).href; const n = normalizeUrl(u); if(n) links.add(n); }catch{}
-  });
-
-  doc.querySelectorAll("iframe[src]").forEach(f=>{
-    try{ const u = new URL(f.getAttribute("src"), base).href; const n = normalizeUrl(u); if(n) links.add(n); }catch{}
-  });
-
-  return Array.from(links);
+function normalize(u){
+try{
+let url=new URL(u);
+url.hash="";
+return url.href;
+}catch{
+return null;
+}
 }
 
-// render crawl tree recursively
-function renderTree(node, parentEl){
-  const li = document.createElement('li');
-  li.textContent = node.url;
-  parentEl.appendChild(li);
-  if(node.children && node.children.length>0){
-    const ul = document.createElement('ul');
-    li.appendChild(ul);
-    node.children.forEach(c=>renderTree(c, ul));
-  }
+async function fetchPage(url){
+
+try{
+
+const res=await fetch(PROXY+encodeURIComponent(url));
+
+if(!res.ok){
+return {ok:false,error:res.status};
 }
 
-async function crawl(seed){
-  const baseHost = new URL(seed).hostname;
-  const visited = new Set();
-  const queue = [{url: seed, parent: null}];
-  allLinks=[]; treeData = {url: seed, children: []};
-  crawlTreeEl.innerHTML=""; linkListEl.innerHTML=""; progressBar.style.width="0%";
+const html=await res.text();
 
-  const nodeMap = {}; nodeMap[seed] = treeData;
+return {ok:true,html};
 
-  let total = 1; 
-  let done = 0;
+}catch(e){
 
-  while(queue.length>0){
-    const {url, parent} = queue.shift();
-    const normUrl = normalizeUrl(url);
-    if(!normUrl || visited.has(normUrl)){ log(`Skipping: ${url}`); continue; }
-    visited.add(normUrl);
+return {ok:false,error:e.message};
 
-    log(`Crawling: ${normUrl}`);
-    const html = await fetchHtml(normUrl); if(!html) continue;
-
-    const links = extractLinks(html, normUrl);
-    links.forEach(l=>{
-      if(isSameDomain(l, baseHost) && !visited.has(l)) queue.push({url:l, parent:normUrl});
-      if(!allLinks.includes(l)) allLinks.push(l);
-    });
-
-    // build tree
-    if(parent){
-      if(!nodeMap[parent].children) nodeMap[parent].children = [];
-      const node = {url:normUrl, children:[]};
-      nodeMap[parent].children.push(node);
-      nodeMap[normUrl] = node;
-    }
-
-    done++;
-    total = Math.max(total, queue.length+done);
-    progressBar.style.width = Math.floor((done/total)*100) + "%";
-
-    await new Promise(r=>setTimeout(r,200));
-  }
-
-  log(`\nCrawl done. Found ${allLinks.length} links.`);
-  renderLinkList(allLinks);
-  renderTree(treeData, crawlTreeEl);
 }
 
-function renderLinkList(list){
-  list.sort((a,b)=>a.localeCompare(b));
-  linkListEl.innerHTML="";
-  for(const url of list){
-    const li = document.createElement('li');
-    const a = document.createElement('a'); a.href=url; a.textContent=url; a.target="_blank"; li.appendChild(a);
-    const viewBtn = document.createElement('button'); viewBtn.textContent='View HTML';
-    viewBtn.onclick=()=>{ activateMode('view'); seedInput.value=url; startFetchHtml(url); };
-    li.appendChild(viewBtn);
-    linkListEl.appendChild(li);
-  }
 }
 
-filterInput.addEventListener("input",()=>{ const q=filterInput.value.toLowerCase(); renderLinkList(allLinks.filter(u=>u.toLowerCase().includes(q))); });
+function extract(html,base){
 
-function activateMode(mode){
-  if(mode==='crawl'){ selectCrawl.classList.add('active'); selectView.classList.remove('active'); htmlViewer.style.display='none'; }
-  else{ selectView.classList.add('active'); selectCrawl.classList.remove('active'); htmlViewer.style.display='block'; }
+const doc=new DOMParser().parseFromString(html,"text/html");
+
+let out=[];
+
+doc.querySelectorAll("a[href]").forEach(a=>{
+try{
+out.push(new URL(a.getAttribute("href"),base).href);
+}catch{}
+});
+
+doc.querySelectorAll("iframe[src]").forEach(f=>{
+try{
+out.push(new URL(f.getAttribute("src"),base).href);
+}catch{}
+});
+
+return out;
+
 }
 
-selectCrawl.onclick = ()=>activateMode('crawl');
-selectView.onclick = ()=>activateMode('view');
+function updateProgress(done,total){
 
-startBtn.onclick = ()=>{
-  const seed = seedInput.value.trim();
-  if(!seed){ alert('Enter URL first'); return; }
-  const full = seed.startsWith('http') ? seed : 'https://' + seed;
-  if(selectCrawl.classList.contains('active')){
-    logEl.textContent=''; crawl(full);
-  }else{
-    startFetchHtml(full);
-  }
+let percent=Math.floor((done/total)*100);
+
+progressBar.style.width=percent+"%";
+
+progressText.textContent=percent+"% ("+done+"/"+total+")";
+
+}
+
+function renderLinks(list){
+
+linksList.innerHTML="";
+
+list.forEach(url=>{
+
+let li=document.createElement("li");
+
+let a=document.createElement("a");
+a.href=url;
+a.textContent=url;
+a.target="_blank";
+
+let view=document.createElement("button");
+view.textContent="Preview";
+
+view.onclick=()=>{
+preview.src=url;
 };
 
-async function startFetchHtml(url){
-  activateMode('view'); htmlViewer.scrollIntoView({behavior:'smooth'});
-  rawText.value = 'Fetching via proxy: '+url+' ...';
-  const html = await fetchHtml(url);
-  rawText.value = html || '<!-- Error fetching HTML -->';
+li.appendChild(a);
+li.appendChild(view);
+
+linksList.appendChild(li);
+
+});
+
 }
 
-previewTab.onclick = ()=>{
-  const html = rawText.value||'';
-  const win = window.open('about:blank','_blank');
-  if(!win){ alert('Popup blocked'); return;}
-  win.document.open(); win.document.write(html); win.document.close(); win.focus();
+function renderTreeNode(url,status,parent){
+
+let li=document.createElement("li");
+
+let span=document.createElement("span");
+span.textContent="▶ "+url;
+span.className="node "+status;
+
+let childUL=document.createElement("ul");
+childUL.style.display="none";
+
+span.onclick=()=>{
+childUL.style.display=childUL.style.display==="none"?"block":"none";
+};
+
+li.appendChild(span);
+li.appendChild(childUL);
+
+if(parent){
+parent.appendChild(li);
+}else{
+tree.appendChild(li);
 }
 
-copyBtn.onclick = async ()=>{
-  try{ await navigator.clipboard.writeText(rawText.value||''); copyBtn.textContent='Copied!'; setTimeout(()=>copyBtn.textContent='Copy',1200); }catch(e){ alert('Copy failed:'+e); }
+return childUL;
+
 }
 
-downloadBtn.onclick = ()=>{
-  const blob = new Blob([rawText.value||''], {type:'text/html'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download='page.html';
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),30000);
+async function crawl(){
+
+running=true;
+
+let root=urlInput.value.trim();
+
+if(!root.startsWith("http")){
+root="https://"+root;
 }
 
-seedInput.addEventListener('keydown',(e)=>{ if(e.key==='Enter') startBtn.click(); });
+let rootHost=new URL(root).hostname;
+
+queue.push({url:root,parent:null});
+
+let done=0;
+
+while(queue.length>0 && running){
+
+if(paused){
+await new Promise(r=>setTimeout(r,200));
+continue;
+}
+
+let item=queue.shift();
+
+let url=normalize(item.url);
+
+if(!url || visited.has(url)){
+continue;
+}
+
+visited.add(url);
+
+log("Crawling "+url);
+
+let result=await fetchPage(url);
+
+let nodeStatus="failed";
+
+let nodeUL=renderTreeNode(url,nodeStatus,item.parent);
+
+if(result.ok){
+
+nodeStatus="success";
+
+let links=extract(result.html,url);
+
+links.forEach(l=>{
+
+if(!visited.has(l)){
+queue.push({url:l,parent:nodeUL});
+}
+
+if(!allLinks.includes(l)){
+allLinks.push(l);
+}
+
+});
+
+}else{
+
+log("Error "+result.error);
+
+}
+
+done++;
+
+updateProgress(done,done+queue.length);
+
+renderLinks(allLinks);
+
+await new Promise(r=>setTimeout(r,150));
+
+}
+
+log("Crawl finished");
+
+}
+
+startBtn.onclick=()=>{
+
+visited.clear();
+queue=[];
+tree.innerHTML="";
+linksList.innerHTML="";
+logBox.textContent="";
+allLinks=[];
+
+crawl();
+
+};
+
+pauseBtn.onclick=()=>{
+paused=true;
+log("Paused");
+};
+
+resumeBtn.onclick=()=>{
+paused=false;
+log("Resumed");
+};
+
+stopBtn.onclick=()=>{
+running=false;
+log("Stopped");
+};
+
+exportBtn.onclick=()=>{
+
+let blob=new Blob([allLinks.join("\n")]);
+
+let a=document.createElement("a");
+
+a.href=URL.createObjectURL(blob);
+
+a.download="links.txt";
+
+a.click();
+
+};
+
+search.oninput=()=>{
+
+let q=search.value.toLowerCase();
+
+renderLinks(allLinks.filter(l=>l.toLowerCase().includes(q)));
+
+};
+
 </script>
+
 </body>
 </html>
