@@ -70,7 +70,7 @@ const sameDomainChk=document.getElementById('sameDomain');
 const progressBar=document.getElementById('progressBar');
 const progressText=document.getElementById('progressText');
 
-let allLinks=[], visited=new Set(), queue=[], failedLinks=[], totalCount=0;
+let allLinks=[], visited=new Set(), queue=[], totalCount=0, activeFetches=0, MAX_CONCURRENT=5;
 
 function log(msg){ logEl.textContent+=msg+"\n"; logEl.scrollTop=logEl.scrollHeight; }
 function normalizeUrl(url){ try{ const u=new URL(url); u.hash=""; return u.href; } catch { return null; } }
@@ -86,52 +86,46 @@ function renderLinkList(list){
     viewBtn.onclick=async()=>{ htmlViewer.style.display='block'; rawText.value="Fetching..."; const r=await fetchHtml(url); rawText.value=r.ok?r.html:"<!-- Error fetching -->"; };
     const txtBtn=document.createElement('button'); txtBtn.textContent='Download TXT';
     txtBtn.onclick=()=>{ const blob=new Blob([url],{type:'text/plain'}); const aEl=document.createElement('a'); aEl.href=URL.createObjectURL(blob); aEl.download='link.txt'; aEl.click(); };
-    const retryBtn=document.createElement('button'); retryBtn.textContent='Retry';
-    retryBtn.className='retryBtn';
-    retryBtn.onclick=()=>{ log("Retrying: "+url); crawlSingle(url); };
-    li.appendChild(a); li.appendChild(viewBtn); li.appendChild(txtBtn); li.appendChild(retryBtn);
+    li.appendChild(a); li.appendChild(viewBtn); li.appendChild(txtBtn);
     linkListEl.appendChild(li);
   });
 }
 
 filterInput.addEventListener("input",()=>{ const q=filterInput.value.toLowerCase(); renderLinkList(allLinks.filter(u=>u.toLowerCase().includes(q))); });
 
-async function crawlSingle(url){
-  const n=normalizeUrl(url); if(!n) return false;
-  const r=await fetchHtml(n);
-  if(r.ok){ log("Success: "+n); return true; } else { log("Failed: "+n+" → "+r.error); return false; }
+async function processQueue(rootHost){
+  while(queue.length>0 && activeFetches<MAX_CONCURRENT){
+    const url=queue.shift(); const n=normalizeUrl(url); if(!n || visited.has(n)) continue;
+    visited.add(n); activeFetches++; log("Crawling: "+n);
+    fetchHtml(n).then(r=>{
+      if(r.ok){
+        const links=extractLinks(r.html,n);
+        for(const l of links){
+          if(!visited.has(l) && (!sameDomainChk.checked || new URL(l).hostname===rootHost)) queue.push(l);
+          if(!allLinks.includes(l)) allLinks.push(l);
+        }
+      } else { queue.push(n); }
+    }).finally(()=>{
+      activeFetches--;
+      updateProgress();
+      renderLinkList(allLinks);
+      processQueue(rootHost);
+    });
+  }
+}
+
+function updateProgress(){
+  const processed=visited.size;
+  const pct=totalCount>0?Math.floor((processed/allLinks.length)*100):0;
+  progressBar.style.width=pct+"%";
+  progressText.textContent=`${pct}% (${processed}/${allLinks.length})`;
 }
 
 async function crawl(seed){
   if(!seed.startsWith('http')) seed='https://'+seed;
   const rootHost=new URL(seed).hostname;
-  visited.clear(); queue=[seed]; allLinks=[]; failedLinks=[]; totalCount=1; logEl.textContent=''; 
-  let processed=0;
-
-  while(queue.length>0){
-    const url=queue.shift(); 
-    const n=normalizeUrl(url); 
-    if(!n || visited.has(n)) continue;
-    visited.add(n); 
-    log("Crawling: "+n);
-    const r=await fetchHtml(n);
-    if(r.ok){
-      const links=extractLinks(r.html,n);
-      for(const l of links){
-        if(!visited.has(l) && (!sameDomainChk.checked || new URL(l).hostname===rootHost)) { queue.push(l); totalCount++; }
-        if(!allLinks.includes(l)) allLinks.push(l);
-      }
-    } else { failedLinks.push(n); queue.push(n); totalCount++; }
-    processed++;
-    const pct=Math.floor((processed/totalCount)*100);
-    progressBar.style.width=pct+"%";
-    progressText.textContent=`${pct}% (${processed}/${totalCount})`;
-    renderLinkList(allLinks);
-    await new Promise(r=>setTimeout(r,50));
-  }
-  progressBar.style.width="100%";
-  progressText.textContent=`100% (${allLinks.length}/${allLinks.length})`;
-  log(`Crawl done. Found ${allLinks.length} links. Failed: ${failedLinks.length}`);
+  visited.clear(); queue=[seed]; allLinks=[]; totalCount=1; logEl.textContent=''; 
+  processQueue(rootHost);
 }
 
 // Mode buttons trigger directly
@@ -140,7 +134,7 @@ viewBtn.onclick=async()=>{ const seed=seedInput.value.trim(); if(!seed){alert('E
 
 // HTML viewer buttons
 previewTab.onclick=()=>{ const w=window.open('about:blank'); w.document.open(); w.document.write(rawText.value||''); w.document.close(); w.focus(); };
-copyBtn.onclick=()=>{ navigator.clipboard.writeText(rawText.value||''); };
+copyBtn.onclick=async()=>{ try { await navigator.clipboard.writeText(rawText.value||''); copyBtn.textContent='Copied!'; setTimeout(()=>copyBtn.textContent='Copy',1200); } catch(e){alert('Copy failed: '+e);} };
 downloadBtn.onclick=()=>{ const blob=new Blob([rawText.value||''],{type:'text/html'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='page.html'; a.click(); };
 
 // Download all links
