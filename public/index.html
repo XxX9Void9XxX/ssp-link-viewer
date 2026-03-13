@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>SSP Link Portal</title>
+<title>SSP Link Portal - Enhanced</title>
 <style>
 body { margin:0; font-family:monospace; background:#000; color:#0f0; text-align:center; }
 #topBar { position:fixed; top:0; left:0; width:100%; background:#111; padding:10px 0; z-index:1000; box-shadow:0 0 20px #0f0; }
@@ -23,6 +23,8 @@ ul#linkList li button { margin-left:8px; background:transparent;color:#0f0;borde
 .modeBtn.active { background:#0f0; color:#001; font-weight:700; }
 .viewer { max-width:90%; margin:10px auto; text-align:left; display:none; }
 textarea#rawText { width:100%; min-height:220px; background:#000; color:#0f0; border:1px solid #0f0; padding:8px; border-radius:6px; resize:vertical; }
+#progressContainer { width:90%; margin:10px auto; background:#111; border:1px solid #0f0; border-radius:4px; height:20px; }
+#progressBar { width:0%; height:100%; background:#0f0; border-radius:4px; }
 </style>
 </head>
 <body>
@@ -39,6 +41,8 @@ textarea#rawText { width:100%; min-height:220px; background:#000; color:#0f0; bo
   <button id="start">Start</button>
   <input id="filter" type="text" placeholder="Search links" size="30">
 </div>
+
+<div id="progressContainer"><div id="progressBar"></div></div>
 
 <pre id="log"></pre>
 <ul id="linkList"></ul>
@@ -69,12 +73,13 @@ const rawText = document.getElementById('rawText');
 const previewTab = document.getElementById('previewTab');
 const copyBtn = document.getElementById('copyBtn');
 const downloadBtn = document.getElementById('downloadBtn');
+const progressBar = document.getElementById('progressBar');
 
 let allLinks = [];
 
-function log(msg) { logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; }
-function normalizeUrl(raw) { try { const u = new URL(raw); u.hash=""; return u.href; } catch { return null; } }
-function isSameDomain(url, base) { try { return new URL(url).hostname === base } catch { return false; } }
+function log(msg){ logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; }
+function normalizeUrl(raw){ try{ const u = new URL(raw); u.hash=""; return u.href;}catch{return null;} }
+function isSameDomain(url,base){ try{ return new URL(url).hostname === base } catch{return false;} }
 
 async function fetchHtml(url){
   try{
@@ -87,13 +92,17 @@ async function fetchHtml(url){
 function extractLinks(html, base){
   const doc = new DOMParser().parseFromString(html,"text/html");
   const links = new Set();
+
+  // normal links
   doc.querySelectorAll("a[href]").forEach(a=>{
-    try{
-      const u = new URL(a.getAttribute("href"), base).href;
-      const n = normalizeUrl(u);
-      if(n) links.add(n);
-    }catch{}
+    try{ const u = new URL(a.getAttribute("href"), base).href; const n = normalizeUrl(u); if(n) links.add(n); }catch{}
   });
+
+  // links in iframes
+  doc.querySelectorAll("iframe[src]").forEach(f=>{
+    try{ const u = new URL(f.getAttribute("src"), base).href; const n = normalizeUrl(u); if(n) links.add(n); }catch{}
+  });
+
   return Array.from(links);
 }
 
@@ -101,21 +110,33 @@ async function crawl(seed){
   const baseHost = new URL(seed).hostname;
   const visited = new Set();
   const queue = [seed];
-  allLinks=[]; linkListEl.innerHTML="";
+  allLinks=[]; linkListEl.innerHTML=""; progressBar.style.width="0%";
+
+  let total = 1; // estimated total pages (will grow dynamically)
+  let done = 0;
+
   while(queue.length>0){
     const raw = queue.shift();
     const url = normalizeUrl(raw);
     if(!url) continue;
     if(visited.has(url)){ log(`Skipping: ${url}`); continue; }
-    visited.add(url); log(`Crawling: ${url}`);
+    visited.add(url);
+    log(`Crawling: ${url}`);
     const html = await fetchHtml(url); if(!html) continue;
     const links = extractLinks(html,url);
+
     for(const l of links){
       if(isSameDomain(l, baseHost) && !visited.has(l)) queue.push(l);
       if(!allLinks.includes(l)) allLinks.push(l);
     }
+
+    done++;
+    total = Math.max(total, queue.length + done);
+    progressBar.style.width = Math.floor((done/total)*100) + "%";
+
     await new Promise(r=>setTimeout(r,200));
   }
+
   log(`\nCrawl done. Found ${allLinks.length} links.`);
   renderLinkList(allLinks);
 }
@@ -125,8 +146,7 @@ function renderLinkList(list){
   linkListEl.innerHTML="";
   for(const url of list){
     const li = document.createElement('li');
-    const a = document.createElement('a');
-    a.href=url; a.textContent=url; a.target="_blank"; li.appendChild(a);
+    const a = document.createElement('a'); a.href=url; a.textContent=url; a.target="_blank"; li.appendChild(a);
     const viewBtn = document.createElement('button'); viewBtn.textContent='View HTML';
     viewBtn.onclick=()=>{ activateMode('view'); seedInput.value=url; startFetchHtml(url); };
     li.appendChild(viewBtn);
@@ -165,7 +185,7 @@ async function startFetchHtml(url){
 previewTab.onclick = ()=>{
   const html = rawText.value||'';
   const win = window.open('about:blank','_blank');
-  if(!win){ alert('Popup blocked'); return; }
+  if(!win){ alert('Popup blocked'); return;}
   win.document.open(); win.document.write(html); win.document.close(); win.focus();
 }
 
