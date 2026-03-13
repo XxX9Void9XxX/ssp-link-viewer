@@ -7,7 +7,7 @@
 body{margin:0;font-family:monospace;background:#000;color:#0f0;text-align:center;}
 #topBar{position:fixed;top:0;left:0;width:100%;background:#111;padding:10px;box-shadow:0 0 20px #0f0;z-index:1000;}
 #topBar h1{margin:0;color:#0f0;}
-#main{margin-top:120px;padding:20px;}
+#main{margin-top:140px;padding:20px;}
 input,button{font-family:monospace;}
 input,select{background:#111;color:#0f0;border:1px solid #0f0;padding:6px;margin:5px;}
 button{background:black;color:#0f0;border:1px solid #0f0;padding:6px 12px;cursor:pointer;}
@@ -21,9 +21,9 @@ ul{list-style:none;padding:0;margin:10px auto;max-width:90%;text-align:left;bord
 .success{color:#0f0;}
 .failed{color:#f00;}
 .skipped{color:#ff0;}
-.retry{color:#f00;border:1px solid #f00;padding:2px 4px;margin-left:5px;font-size:11px;}
+.retryBtn{color:#f00;border:1px solid #f00;padding:2px 4px;margin-left:5px;font-size:11px;cursor:pointer;}
 textarea{width:90%;height:200px;background:#000;color:#0f0;border:1px solid #0f0;padding:6px;margin-top:5px;resize:vertical;}
-iframe{width:90%;height:300px;border:1px solid #0f0;margin-top:10px;}
+#htmlControls{margin-top:5px;display:flex;gap:8px;justify-content:center;}
 </style>
 </head>
 <body>
@@ -45,6 +45,13 @@ iframe{width:90%;height:300px;border:1px solid #0f0;margin-top:10px;}
 <pre id="log"></pre>
 <ul id="tree"></ul>
 <ul id="links"></ul>
+
+<div id="htmlViewer">
+<div id="htmlControls">
+<button id="previewBtn">Preview</button>
+<button id="copyBtn">Copy</button>
+<button id="downloadBtn">Download</button>
+</div>
 <textarea id="rawHTML" placeholder="Raw HTML will appear here"></textarea>
 <iframe id="preview"></iframe>
 </div>
@@ -67,27 +74,24 @@ const linksList=document.getElementById("links");
 const search=document.getElementById("search");
 const rawHTML=document.getElementById("rawHTML");
 const preview=document.getElementById("preview");
+const previewBtn=document.getElementById("previewBtn");
+const copyBtn=document.getElementById("copyBtn");
+const downloadBtn=document.getElementById("downloadBtn");
 
-let visited=new Set();
-let queue=[];
-let running=false;
-let paused=false;
-let allLinks=[];
-let sitemap={};
+let visited=new Set(),queue=[],running=false,paused=false,allLinks=[],sitemap={};
 
 function log(msg){logBox.textContent+="["+new Date().toLocaleTimeString()+"] "+msg+"\n";logBox.scrollTop=logBox.scrollHeight;}
-function normalize(u){try{let url=new URL(u);url.hash="";return url.href;}catch{return null;}}
-async function fetchPage(url){try{const res=await fetch(PROXY+encodeURIComponent(url));if(!res.ok){return {ok:false,error:res.status}}const html=await res.text();return {ok:true,html};}catch(e){return {ok:false,error:e.message}}}
+function normalize(u){try{let url=new URL(u);url.hash="";return url.href}catch{return null}}
+async function fetchPage(url){try{const res=await fetch(PROXY+encodeURIComponent(url));if(!res.ok)return{ok:false,error:res.status};const html=await res.text();return{ok:true,html}}catch(e){return{ok:false,error:e.message}}}
 function extract(html,base){
     const doc=new DOMParser().parseFromString(html,"text/html");
     let out=[];
-    doc.querySelectorAll("a[href]").forEach(a=>{try{out.push(new URL(a.getAttribute("href"),base).href);}catch{}});
-    doc.querySelectorAll("iframe[src]").forEach(f=>{try{out.push(new URL(f.getAttribute("src"),base).href);}catch{}});
-    // hidden links: simple regex in scripts
-    html.replace(/https?:\/\/[^\s"'<>\)]+/g, m=>out.push(new URL(m,base).href));
+    doc.querySelectorAll("a[href]").forEach(a=>{try{out.push(new URL(a.getAttribute("href"),base).href)}catch{}});
+    doc.querySelectorAll("iframe[src]").forEach(f=>{try{out.push(new URL(f.getAttribute("src"),base).href)}catch{}});
+    html.replace(/https?:\/\/[^\s"'<>\)]+/g,m=>out.push(new URL(m,base).href));
     return Array.from(new Set(out));
 }
-function updateProgress(done,total){let p=Math.floor(done/total*100);progressBar.style.width=p+"%";progressText.textContent=p+"% ("+done+"/"+total+")";}
+function updateProgress(done,total){let p=Math.min(100,Math.floor(done/total*100));progressBar.style.width=p+"%";progressText.textContent=p+"% ("+done+"/"+total+")";}
 function renderLinks(list){
     linksList.innerHTML="";
     list.forEach(url=>{
@@ -107,63 +111,64 @@ function renderLinks(list){
 function renderTreeNode(url,status,parent){
     let li=document.createElement("li");
     let span=document.createElement("span");
-    span.textContent="▶ "+url;
-    span.className="node "+status;
+    span.textContent="▶ "+url; span.className="node "+status;
     let childUL=document.createElement("ul"); childUL.style.display="none";
     span.onclick=()=>{childUL.style.display=childUL.style.display==="none"?"block":"none";};
     li.appendChild(span); li.appendChild(childUL);
     if(parent){parent.appendChild(li);}else{tree.appendChild(li);}
-    return childUL;
+    return {childUL,span};
 }
 
 async function crawl(){
     running=true; queue=[]; visited.clear(); tree.innerHTML=""; linksList.innerHTML=""; allLinks=[]; sitemap={};
-    let root=urlInput.value.trim();
-    if(!root.startsWith("http")) root="https://"+root;
+    let root=urlInput.value.trim(); if(!root.startsWith("http")) root="https://"+root;
     const rootHost=new URL(root).hostname;
     queue.push({url:root,parent:null,nodeRef:sitemap});
     let done=0;
     const maxConcurrent=3;
-    while(queue.length>0 && running){
+    while((queue.length>0 || running) && running){
         if(paused){await new Promise(r=>setTimeout(r,200)); continue;}
         let batch=queue.splice(0,maxConcurrent);
         await Promise.all(batch.map(async item=>{
-            let url=normalize(item.url);
-            if(!url || visited.has(url)) return;
-            visited.add(url);
-            log("Crawling "+url);
-            item.nodeRef[url]={children:{},status:"failed"};
-            let nodeUL=renderTreeNode(url,"failed",item.parent);
+            let url=normalize(item.url); if(!url || visited.has(url)) return;
+            visited.add(url); log("Crawling "+url);
+            if(!item.nodeRef[url]) item.nodeRef[url]={children:{},status:"failed"};
+            let nodeElements=renderTreeNode(url,"failed",item.parent); 
             let result=await fetchPage(url);
             if(result.ok){
                 item.nodeRef[url].status="success";
                 let links=extract(result.html,url);
                 links.forEach(l=>{
-                    if(!visited.has(l)){
-                        if(!sameDomainChk.checked || new URL(l).hostname===rootHost){
-                            queue.push({url:l,parent:nodeUL,nodeRef:item.nodeRef[url].children});
-                        }
+                    if(!visited.has(l) && (!sameDomainChk.checked || new URL(l).hostname===rootHost)){
+                        queue.push({url:l,parent:nodeElements.childUL,nodeRef:item.nodeRef[url].children});
                     }
                     if(!allLinks.includes(l)) allLinks.push(l);
                 });
             }else{
+                let retryBtn=document.createElement("span"); retryBtn.textContent="Retry"; retryBtn.className="retryBtn";
+                retryBtn.onclick=()=>{queue.push({url:item.url,parent:item.parent,nodeRef:item.nodeRef}); crawl();};
+                nodeElements.childUL.appendChild(retryBtn);
                 log("Error "+result.error);
             }
             done++; updateProgress(done,done+queue.length); renderLinks(allLinks);
             await new Promise(r=>setTimeout(r,100));
         }));
     }
+    progressBar.style.width="100%"; progressText.textContent="100% ("+allLinks.length+"/"+allLinks.length+")";
     log("Crawl finished");
 }
 
 startBtn.onclick=()=>{crawl();}
-pauseBtn.onclick=()=>{paused=true;log("Paused");}
-resumeBtn.onclick=()=>{paused=false;log("Resumed");}
-stopBtn.onclick=()=>{running=false;log("Stopped");}
+pauseBtn.onclick=()=>{paused=true; log("Paused");}
+resumeBtn.onclick=()=>{paused=false; log("Resumed");}
+stopBtn.onclick=()=>{running=false; log("Stopped");}
 exportBtn.onclick=()=>{let blob=new Blob([allLinks.join("\n")]);let a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="links.txt";a.click();}
 exportJsonBtn.onclick=()=>{let blob=new Blob([JSON.stringify(sitemap,null,2)]);let a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sitemap.json";a.click();}
 search.oninput=()=>{let q=search.value.toLowerCase(); renderLinks(allLinks.filter(l=>l.toLowerCase().includes(q)));};
-</script>
 
+previewBtn.onclick=()=>{let w=window.open('about:blank'); w.document.open(); w.document.write(rawHTML.value||''); w.document.close(); w.focus();}
+copyBtn.onclick=()=>{navigator.clipboard.writeText(rawHTML.value||'').then(()=>{copyBtn.textContent='Copied!';setTimeout(()=>copyBtn.textContent='Copy',1200);});}
+downloadBtn.onclick=()=>{let blob=new Blob([rawHTML.value||''],{type:'text/html'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='page.html';a.click();}
+</script>
 </body>
 </html>
