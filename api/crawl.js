@@ -10,14 +10,14 @@ export default async function handler(req, res) {
   const queue = [{ url: seed, level: 0 }];
   const results = [];
 
-  while (queue.length > 0) {
+  while(queue.length > 0) {
     const { url, level } = queue.shift();
-    if (visited.has(url) || level > depth) continue;
+    if(visited.has(url) || level > depth) continue;
     visited.add(url);
 
     try {
       const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
-      if (!resp.ok) continue;
+      if(!resp.ok) continue;
       const html = await resp.text();
       results.push(url);
 
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
         .filter(l => !visited.has(l));
 
       links.forEach(l => queue.push({ url: l, level: level + 1 }));
-    } catch { continue; }
+    } catch {}
   }
 
   res.setHeader("Access-Control-Allow-Origin", "*");
