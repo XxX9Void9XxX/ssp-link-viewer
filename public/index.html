@@ -7,7 +7,7 @@
 body{margin:0;font-family:monospace;background:#000;color:#0f0;text-align:center;}
 #topBar{position:fixed;top:0;left:0;width:100%;background:#111;padding:10px;box-shadow:0 0 20px #0f0;z-index:1000;}
 #topBar h1{margin:0;color:#0f0;}
-#main{margin-top:140px;padding:20px;}
+#main{margin-top:160px;padding:20px;}
 input,button{font-family:monospace;}
 input,select{background:#111;color:#0f0;border:1px solid #0f0;padding:6px;margin:5px;}
 button{background:black;color:#0f0;border:1px solid #0f0;padding:6px 12px;cursor:pointer;}
@@ -17,7 +17,7 @@ button:hover{background:#0f0;color:#000;}
 #progressText{position:absolute;width:100%;top:0;left:0;font-size:12px;line-height:20px;}
 #log{max-width:90%;height:150px;overflow:auto;border:1px solid #0f0;margin:10px auto;text-align:left;padding:8px;background:black;}
 ul{list-style:none;padding:0;margin:10px auto;max-width:90%;text-align:left;border:1px solid #0f0;background:#111;max-height:300px;overflow:auto;}
-.node{cursor:pointer;}
+.node{cursor:pointer;display:block;}
 .success{color:#0f0;}
 .failed{color:#f00;}
 .skipped{color:#ff0;}
@@ -79,6 +79,7 @@ const copyBtn=document.getElementById("copyBtn");
 const downloadBtn=document.getElementById("downloadBtn");
 
 let visited=new Set(),queue=[],running=false,paused=false,allLinks=[],sitemap={};
+let renderScheduled=false;
 
 function log(msg){logBox.textContent+="["+new Date().toLocaleTimeString()+"] "+msg+"\n";logBox.scrollTop=logBox.scrollHeight;}
 function normalize(u){try{let url=new URL(u);url.hash="";return url.href}catch{return null}}
@@ -91,9 +92,21 @@ function extract(html,base){
     html.replace(/https?:\/\/[^\s"'<>\)]+/g,m=>out.push(new URL(m,base).href));
     return Array.from(new Set(out));
 }
+
+// Progressive rendering to avoid browser freeze
+function scheduleRender(){
+    if(renderScheduled) return;
+    renderScheduled=true;
+    requestAnimationFrame(()=>{
+        renderScheduled=false;
+        renderLinks(allLinks);
+    });
+}
+
 function updateProgress(done,total){let p=Math.min(100,Math.floor(done/total*100));progressBar.style.width=p+"%";progressText.textContent=p+"% ("+done+"/"+total+")";}
 function renderLinks(list){
     linksList.innerHTML="";
+    let fragment=document.createDocumentFragment();
     list.forEach(url=>{
         let li=document.createElement("li");
         let a=document.createElement("a"); a.href=url; a.textContent=url; a.target="_blank";
@@ -105,9 +118,11 @@ function renderLinks(list){
             preview.src=url;
         };
         li.appendChild(a); li.appendChild(view);
-        linksList.appendChild(li);
+        fragment.appendChild(li);
     });
+    linksList.appendChild(fragment);
 }
+
 function renderTreeNode(url,status,parent){
     let li=document.createElement("li");
     let span=document.createElement("span");
@@ -124,8 +139,7 @@ async function crawl(){
     let root=urlInput.value.trim(); if(!root.startsWith("http")) root="https://"+root;
     const rootHost=new URL(root).hostname;
     queue.push({url:root,parent:null,nodeRef:sitemap});
-    let done=0;
-    const maxConcurrent=3;
+    let done=0; const maxConcurrent=3;
     while((queue.length>0 || running) && running){
         if(paused){await new Promise(r=>setTimeout(r,200)); continue;}
         let batch=queue.splice(0,maxConcurrent);
@@ -133,7 +147,7 @@ async function crawl(){
             let url=normalize(item.url); if(!url || visited.has(url)) return;
             visited.add(url); log("Crawling "+url);
             if(!item.nodeRef[url]) item.nodeRef[url]={children:{},status:"failed"};
-            let nodeElements=renderTreeNode(url,"failed",item.parent); 
+            let nodeElements=renderTreeNode(url,"failed",item.parent);
             let result=await fetchPage(url);
             if(result.ok){
                 item.nodeRef[url].status="success";
@@ -150,8 +164,9 @@ async function crawl(){
                 nodeElements.childUL.appendChild(retryBtn);
                 log("Error "+result.error);
             }
-            done++; updateProgress(done,done+queue.length); renderLinks(allLinks);
-            await new Promise(r=>setTimeout(r,100));
+            done++; updateProgress(done,done+queue.length);
+            scheduleRender();
+            await new Promise(r=>setTimeout(r,50));
         }));
     }
     progressBar.style.width="100%"; progressText.textContent="100% ("+allLinks.length+"/"+allLinks.length+")";
